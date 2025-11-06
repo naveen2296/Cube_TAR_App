@@ -1,9 +1,7 @@
 import json, math, time, requests, streamlit as st
 import pandas as pd, numpy as np, ee, xml.etree.ElementTree as ET
 from io import BytesIO
-import py3dep, time
-import random
-import re
+import py3dep, random, re, zipfile, io
 
 # ================================================
 # PAGE CONFIG
@@ -33,18 +31,18 @@ st.markdown("""
 
 logo_path = "logo.png"
 
-col1, col2, col3 = st.columns([1,4,1])
+col1, col2, col3 = st.columns([1, 4, 1])
 with col1:
     st.image(logo_path, width=125)
 with col2:
     st.markdown('<div class="title">Cube Highways Technologies Private Limited</div>', unsafe_allow_html=True)
     st.markdown('<div class="glitter">Technical Audit & Rating</div>', unsafe_allow_html=True)
 
-# --- Authentication ---
+# ================================================
+# AUTHENTICATION
+# ================================================
 def check_password():
-    """Returns `True` if the user had a correct password."""
     if "password_correct" not in st.session_state:
-        # First run, show input widgets
         st.text_input("Username", key="username")
         st.text_input("Password", type="password", key="password")
         if st.button("Login"):
@@ -61,106 +59,77 @@ def check_password():
         return True
     return False
 
-# Stop the app if incorrect
 if not check_password():
     st.stop()
+
 # ================================================
 # AUTHENTICATE EARTH ENGINE
 # ================================================
 service_account = st.secrets["GEE"]["service_account"]
 private_key = st.secrets["GEE"]["private_key"]
-
 credentials = ee.ServiceAccountCredentials(service_account, key_data=private_key)
 ee.Initialize(credentials)
 st.success("✅ Google Earth Engine authenticated successfully")
 
-# ================================================
-# MAPBOX TOKEN
-# ================================================
 MAPBOX_TOKEN = "sk.eyJ1IjoibmF2ZWVua3ViZW4iLCJhIjoiY21ncXZpZDBkMDlvbTJqczhxYTMyNXJ5ZCJ9.N3zxp8rqbp_M0ZtZeUgHfg"
 
 # ================================================
-# UPLOAD KML FILE
+# MULTI FILE UPLOAD
 # ================================================
-import zipfile
-import io
-import xml.etree.ElementTree as ET
-
-uploaded = st.file_uploader(
+uploaded_files = st.file_uploader(
     "📤 Upload multiple alignment files (.kml or .kmz)",
     type=["kml", "kmz"],
     accept_multiple_files=True
 )
-if not uploaded:
+if not uploaded_files:
     st.info("Please upload one or more KML/KMZ alignment files.")
     st.stop()
 
+zip_buffer = BytesIO()
+excel_files = []
+progress = st.progress(0)
 
-try:
-    # =========================
-    # STEP 1: Read KML contents
-    # =========================
-    if uploaded.name.lower().endswith(".kmz"):
-        with zipfile.ZipFile(io.BytesIO(uploaded.read()), 'r') as z:
-            # find first .kml file inside KMZ
-            kml_files = [f for f in z.namelist() if f.endswith(".kml")]
-            if not kml_files:
-                st.error("No .kml file found inside KMZ.")
-                st.stop()
-            kml_content = z.read(kml_files[0]).decode("utf-8")
-    else:
-        kml_content = uploaded.getvalue().decode("utf-8")
+# ================================================
+# MAIN LOOP - PROCESS EACH FILE
+# ================================================
+for file_index, uploaded in enumerate(uploaded_files):
+    file_name = uploaded.name.replace(".kml", "").replace(".kmz", "")
+    st.write(f"📂 Processing: {file_name}")
 
-    # =========================
-    # STEP 2: Parse KML features
-    # =========================
-    zip_buffer = BytesIO()
-    excel_files = []
-    progress = st.progress(0)
+    try:
+        # ---- READ KML/KMZ ----
+        if uploaded.name.lower().endswith(".kmz"):
+            with zipfile.ZipFile(io.BytesIO(uploaded.read()), 'r') as z:
+                kml_files = [f for f in z.namelist() if f.endswith(".kml")]
+                if not kml_files:
+                    st.warning(f"⚠️ No .kml file found inside {file_name}.kmz")
+                    continue
+                kml_content = z.read(kml_files[0]).decode("utf-8")
+        else:
+            kml_content = uploaded.getvalue().decode("utf-8")
 
-    for file_index, uploaded in enumerate(uploaded):
-        file_name = uploaded.name.replace(".kml", "").replace(".kmz", "")
-        st.write(f"📂 Processing file: {file_name}")
-    
-    root = ET.fromstring(kml_content)
-    ns = {"kml": "http://www.opengis.net/kml/2.2"}
-    points = []
+        # ---- PARSE POINTS ----
+        root = ET.fromstring(kml_content)
+        ns = {"kml": "http://www.opengis.net/kml/2.2"}
+        points = []
+        for pm in root.findall(".//kml:Placemark", ns):
+            name_elem = pm.find("kml:name", ns)
+            coord_elem = pm.find(".//kml:coordinates", ns)
+            if coord_elem is None or not coord_elem.text.strip():
+                continue
 
-    for pm in root.findall(".//kml:Placemark", ns):
-        name_elem = pm.find("kml:name", ns)
-        coord_elem = pm.find(".//kml:coordinates", ns)
+            coords = coord_elem.text.strip().split()
+            if len(coords) == 1:
+                lon, lat, *_ = [float(x) for x in coords[0].split(",")]
+                name = name_elem.text.strip() if name_elem is not None else ""
+                try:
+                    name_numeric = float(name.replace("+", "")) if "+" in name else float(name)
+                except:
+                    name_numeric = 0.0
+                points.append({"name": name, "lat": lat, "lon": lon, "name_numeric": name_numeric})
 
-        # Skip if coordinates missing
-        if coord_elem is None or not coord_elem.text.strip():
-            continue
-
-        coords = coord_elem.text.strip().split()
-        geom_type = "LineString" if len(coords) > 1 else "Point"
-
-        # Only extract Point coordinates
-        if geom_type == "Point":
-            lon, lat, *_ = [float(x) for x in coords[0].split(",")]
-            name = name_elem.text.strip() if name_elem is not None else ""
-
-            # Convert "0+100" to numeric for sorting
-            name_numeric = 0.0
-            try:
-                name_numeric = float(name.replace("+", "")) if "+" in name else float(name)
-            except:
-                pass
-
-            points.append({
-                "name": name,
-                "name_numeric": name_numeric,
-                "lat": lat,
-                "lon": lon
-            })
-
-    # =========================
-    # STEP 3: Sort and confirm
-    # =========================
-    points_sorted = sorted(points, key=lambda p: p["name_numeric"])
-    st.success(f"✅ Loaded {len(points_sorted)} chainage points from file.")
+        points_sorted = sorted(points, key=lambda x: x["name_numeric"])
+        st.success(f"✅ Loaded {len(points_sorted)} chainage points from file.")
 
 except Exception as e:
     st.error(f"KML/KMZ parsing failed: {e}")
@@ -429,31 +398,39 @@ for i, p in enumerate(points_sorted):
 
 st.success("✅ TAR")
 
-    # --- Save this file’s output ---
-buffer = BytesIO()
-df.to_excel(buffer, index=False, engine="openpyxl")
-excel_files.append((f"{file_name}.xlsx", buffer))
+   # ---- PREVIEW ONLY FIRST FILE ----
+        if file_index == 0:
+            st.subheader(f"📄 Preview of {file_name}")
+            st.dataframe(df.head(10), use_container_width=True)
 
-    # --- Show progress ---
-progress.progress((file_index + 1) / len(uploaded_files))
+        # ---- SAVE TO EXCEL ----
+        buffer = BytesIO()
+        df.to_excel(buffer, index=False, engine="openpyxl")
+        excel_files.append((f"{file_name}.xlsx", buffer))
 
-# --- After loop: create ZIP of all Excel files ---
+        # ---- PROGRESS UPDATE ----
+        progress.progress((file_index + 1) / len(uploaded_files))
+        st.success(f"✅ Completed: {file_name}")
+
+    except Exception as e:
+        st.error(f"❌ Error in {file_name}: {e}")
+        continue
+
+# ================================================
+# ZIP DOWNLOAD
+# ================================================
 with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zipf:
     for filename, data in excel_files:
         data.seek(0)
         zipf.writestr(filename, data.read())
 
-# --- Show preview for first file only ---
-st.subheader(f"📄 Preview of {uploaded_files[0].name}")
-st.dataframe(df.head(10), use_container_width=True)
-
-# --- Final ZIP download ---
 st.download_button(
     label="📦 Download All Excel Files (ZIP)",
     data=zip_buffer.getvalue(),
-    file_name="OFC_All_Outputs.zip",
+    file_name="Cube_TAR_All_Files.zip",
     mime="application/zip"
 )
+
 
 
 
