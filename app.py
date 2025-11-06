@@ -412,10 +412,6 @@ excel_files.append((f"{file_name}.xlsx", buffer))
 progress.progress((file_index + 1) / len(uploaded_files))
 st.success(f"✅ Completed: {file_name}")
 
-except Exception as e:
-    st.error(f"❌ Error in {file_name}: {e}")
-    continue
-
 # ================================================
 # ZIP DOWNLOAD
 # ================================================
@@ -430,6 +426,7 @@ st.download_button(
     file_name="Cube_TAR_All_Files.zip",
     mime="application/zip"
 )
+
 
 
 
