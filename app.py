@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 import json, math, time, requests, streamlit as st
 import pandas as pd, numpy as np, ee, xml.etree.ElementTree as ET
 from io import BytesIO
@@ -822,6 +821,5 @@ buf = BytesIO()
 df.to_excel(buf, index=False, engine="openpyxl")
 st.download_button("📥 Download Full Excel (OFC Data)",
                    buf.getvalue(),
-                   file_name="OFC Alignment.xlsx",
+                   file_name="OFC Data.xlsx",
                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
->>>>>>> 9d46a22 (Initial commit - Cube TAR app)
