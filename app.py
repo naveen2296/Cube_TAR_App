@@ -87,7 +87,7 @@ import zipfile
 import io
 import xml.etree.ElementTree as ET
 
-uploaded = st.file_uploader("📤 Upload file (.kml or .kmz)", type=["kml", "kmz"],accept_multiple_files=True)
+uploaded = st.file_uploader("📤 Upload alignment file (.kml or .kmz)", type=["kml", "kmz"])
 if uploaded is None:
     st.info("Please upload your KML or KMZ alignment file.")
     st.stop()
@@ -823,3 +823,4 @@ st.download_button("📥 Download Full Excel (OFC Data)",
                    buf.getvalue(),
                    file_name="OFC Data.xlsx",
                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
