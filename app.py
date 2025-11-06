@@ -131,9 +131,9 @@ for file_index, uploaded in enumerate(uploaded_files):
         points_sorted = sorted(points, key=lambda x: x["name_numeric"])
         st.success(f"✅ Loaded {len(points_sorted)} chainage points from file.")
 
-except Exception as e:
-    st.error(f"KML/KMZ parsing failed: {e}")
-    st.stop()
+    except Exception as e:
+            st.error(f"KML/KMZ parsing failed: {e}")
+            st.stop()
 
 # ================================================
 # FUNCTIONS
@@ -430,6 +430,7 @@ st.download_button(
     file_name="Cube_TAR_All_Files.zip",
     mime="application/zip"
 )
+
 
 
 
