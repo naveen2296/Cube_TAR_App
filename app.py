@@ -92,14 +92,14 @@ uploaded_files = st.file_uploader(
     type=["kml", "kmz"],
     accept_multiple_files=True
 )
-
 if not uploaded_files:
     st.info("Please upload one or more KML or KMZ alignment files.")
     st.stop()
 
 # Loop through each uploaded file
-for uploaded in uploaded_files:
-    st.markdown(f"### 📄 Processing file: `{uploaded.name}`")
+for file_index, uploaded in enumerate(uploaded_files, start=1):
+    file_name = uploaded.name.replace(".kml", "").replace(".kmz", "")
+    st.markdown(f"### 📄 ({file_index}) Processing file: `{file_name}`")
 
     try:
         # =========================
@@ -823,13 +823,35 @@ st.success("✅ TAR")
 # DISPLAY & DOWNLOAD
 # ================================================
 df = pd.DataFrame(records)
+# --- Preview only first file ---
+if file_index == 0:
+st.subheader(f"📄 Preview of {file_name}")
 st.dataframe(df.head(10), use_container_width=True)
+# --- Save this Excel ---
 buf = BytesIO()
 df.to_excel(buf, index=False, engine="openpyxl")
-st.download_button("📥 Download Full Excel (OFC Data)",
-                   buf.getvalue(),
-                   file_name="OFC Data.xlsx",
-                   mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+excel_files.append((f"{file_name}.xlsx", buf))
+# --- Progress update ---
+progress.progress((file_index + 1) / len(uploaded_files))
+st.success(f"✅ Completed: {file_name}")
+except Exception as e:
+   st.error(f"❌ Error processing {file_name}: {e}")
+   continue
+# ================================================
+# ZIP DOWNLOAD
+# ================================================
+with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zipf:
+    for filename, data in excel_files:
+        data.seek(0)
+        zipf.writestr(filename, data.read())
+
+st.download_button(
+    label="📦 Download All Excel Files (ZIP)",
+    data=zip_buffer.getvalue(),
+    file_name="OFC_All_Outputs.zip",
+    mime="application/zip"
+)
+
 
 
 
