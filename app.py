@@ -1,7 +1,9 @@
-import json, math, time, re, requests, streamlit as st
+import json, math, time, requests, streamlit as st
 import pandas as pd, numpy as np, ee, xml.etree.ElementTree as ET
 from io import BytesIO
 import py3dep, time
+import random
+import re
 
 # ================================================
 # PAGE CONFIG
@@ -41,16 +43,12 @@ with col2:
 # ================================================
 # AUTHENTICATE EARTH ENGINE
 # ================================================
-SERVICE_ACCOUNT = "google-earth-engine@alpine-dogfish-462009-e8.iam.gserviceaccount.com"
-KEY_PATH = r"D:\OneDrive - Cube Highways and Transportation Assets Advisors (P) Ltd\Desktop\KP\OFC\gee.json"
+service_account = st.secrets["GEE"]["service_account"]
+private_key = st.secrets["GEE"]["private_key"]
 
-try:
-    credentials = ee.ServiceAccountCredentials(SERVICE_ACCOUNT, KEY_PATH)
-    ee.Initialize(credentials)
-    st.success("✅ Google Earth Engine authenticated automatically.")
-except Exception as e:
-    st.error(f"⚠️ Earth Engine authentication failed: {e}")
-    st.stop()
+credentials = ee.ServiceAccountCredentials(service_account, key_data=private_key)
+ee.Initialize(credentials)
+st.success("✅ Google Earth Engine authenticated successfully")
 
 # ================================================
 # MAPBOX TOKEN
@@ -60,27 +58,75 @@ MAPBOX_TOKEN = "sk.eyJ1IjoibmF2ZWVua3ViZW4iLCJhIjoiY21ncXZpZDBkMDlvbTJqczhxYTMyN
 # ================================================
 # UPLOAD KML FILE
 # ================================================
-uploaded = st.file_uploader("📤 Upload alignment KML file (.kml)", type=["kml"])
+import zipfile
+import io
+import xml.etree.ElementTree as ET
+
+uploaded = st.file_uploader("📤 Upload alignment file (.kml or .kmz)", type=["kml", "kmz"])
 if uploaded is None:
-    st.info("Please upload your KML alignment points.")
+    st.info("Please upload your KML or KMZ alignment file.")
     st.stop()
 
 try:
-    root = ET.fromstring(uploaded.getvalue())
+    # =========================
+    # STEP 1: Read KML contents
+    # =========================
+    if uploaded.name.lower().endswith(".kmz"):
+        with zipfile.ZipFile(io.BytesIO(uploaded.read()), 'r') as z:
+            # find first .kml file inside KMZ
+            kml_files = [f for f in z.namelist() if f.endswith(".kml")]
+            if not kml_files:
+                st.error("No .kml file found inside KMZ.")
+                st.stop()
+            kml_content = z.read(kml_files[0]).decode("utf-8")
+    else:
+        kml_content = uploaded.getvalue().decode("utf-8")
+
+    # =========================
+    # STEP 2: Parse KML features
+    # =========================
+    root = ET.fromstring(kml_content)
     ns = {"kml": "http://www.opengis.net/kml/2.2"}
     points = []
+
     for pm in root.findall(".//kml:Placemark", ns):
         name_elem = pm.find("kml:name", ns)
         coord_elem = pm.find(".//kml:coordinates", ns)
-        if coord_elem is None: 
+
+        # Skip if coordinates missing
+        if coord_elem is None or not coord_elem.text.strip():
             continue
-        lon, lat, *_ = [float(x) for x in coord_elem.text.strip().split(",")]
-        name = name_elem.text.strip() if name_elem is not None else ""
-        points.append({"name": name, "lat": lat, "lon": lon})
-    points_sorted = sorted(points, key=lambda p: float(p["name"]) if p["name"].replace('.', '', 1).isdigit() else 0)
-    st.success(f"✅ Loaded {len(points_sorted)} points from KML.")
+
+        coords = coord_elem.text.strip().split()
+        geom_type = "LineString" if len(coords) > 1 else "Point"
+
+        # Only extract Point coordinates
+        if geom_type == "Point":
+            lon, lat, *_ = [float(x) for x in coords[0].split(",")]
+            name = name_elem.text.strip() if name_elem is not None else ""
+
+            # Convert "0+100" to numeric for sorting
+            name_numeric = 0.0
+            try:
+                name_numeric = float(name.replace("+", "")) if "+" in name else float(name)
+            except:
+                pass
+
+            points.append({
+                "name": name,
+                "name_numeric": name_numeric,
+                "lat": lat,
+                "lon": lon
+            })
+
+    # =========================
+    # STEP 3: Sort and confirm
+    # =========================
+    points_sorted = sorted(points, key=lambda p: p["name_numeric"])
+    st.success(f"✅ Loaded {len(points_sorted)} chainage points from file.")
+
 except Exception as e:
-    st.error(f"KML parsing failed: {e}")
+    st.error(f"KML/KMZ parsing failed: {e}")
     st.stop()
 
 # ================================================
@@ -107,9 +153,9 @@ def get_elevation_slope(lat, lon):
 
 def classify_terrain(slope):
     if slope is None: return "Unknown"
-    if slope < 10: return "Plain"
-    elif slope < 25: return "Rolling"
-    elif slope < 60: return "Hilly"
+    if slope < 6: return "Plain"
+    elif slope < 15: return "Rolling"
+    elif slope < 30: return "Hilly"
     return "Steep"
 
 # --- Load datasets ---
@@ -119,7 +165,7 @@ landcov = ee.ImageCollection("COPERNICUS/Landcover/100m/Proba-V-C3/Global").firs
     ["tree-coverfraction", "grass-coverfraction", "shrub-coverfraction"]
 )
 
-def is_near_road(lat, lon, radius=5):
+def is_near_road(lat, lon, radius=2):
     """
     Check if a point lies near any OSM road (within radius in meters).
     Used to avoid classifying highways as Urban in WorldCover.
@@ -145,7 +191,7 @@ def classify_landuse(lat, lon):
     """
     try:
         pt = ee.Geometry.Point([lon, lat])
-        buffer = pt.buffer(50)  # 50 m radius
+        buffer = pt.buffer(100) 
 
         # --- Compute built-up mean (GHSL 2023A) ---
         built_mean = ghsl.reduceRegion(
@@ -175,18 +221,17 @@ def classify_landuse(lat, lon):
         road_nearby = is_near_road(lat, lon)
 
         # --- Classification Logic ---
-        if (built_mean >= 60 or wc_mode == 50) and not road_nearby:
+        if (built_mean > 10 and wc_mode == 50) and not road_nearby:
             category = "Urban"
-        elif (20 <= built_mean < 60 or wc_mode == 40) and not road_nearby:
+        elif (7 <= built_mean <= 60 and wc_mode < 50):
             category = "Semi Urban"
-        elif wc_mode in [10, 20] or veg_total > 50:
+        elif wc_mode in [10, 20] or veg_total >= 50:
             category = "Forest"
         else:
             category = "Rural"
 
         # --- Safety rule: downgrade Urban to Rural if only near road ---
-        if road_nearby and category == "Urban" and built_mean < 70:
-            category = "Rural"
+
 
         # --- Return all values ---
         return {
@@ -205,42 +250,76 @@ def classify_landuse(lat, lon):
 def safe_ref(ref): 
     return str(ref).split(";")[0].strip().replace(" ", "") if ref else "-"
 
-def query_road(lat, lon):
-    q = f"[out:json][timeout:25];way(around:60,{lat},{lon})[highway];out tags 1;"
-    try:
-        r = requests.get("https://overpass-api.de/api/interpreter", params={"data": q}, timeout=25)
-        data = r.json().get("elements", [])
-        if not data: return "-", {}
-        tags = data[0].get("tags", {})
-        ref = safe_ref(tags.get("ref", "-"))
-        return ref, tags
-    except Exception:
-        return "-", {}
 
-def estimate_lanes(tags, ref):
-    try:
-        if "lanes" in tags:
-            return int(float(re.findall(r"[\d.]+", str(tags["lanes"]))[0]))
-    except:
-        pass
-    if ref.startswith("NH"): return 4
-    if ref.startswith("SH"): return 2
-    return 2
+OVERPASS_URLS = [
+    "https://overpass-api.de/api/interpreter",
+    "https://overpass.kumi.systems/api/interpreter",
+    "https://overpass.openstreetmap.fr/api/interpreter"
+]
 
-def query_crossings(lat, lon, radius=150):
-    q = f"""[out:json][timeout:25];
+def query_road(lat, lon, retries=3):
+    """
+    Robust OSM Overpass query to get road tags consistently.
+    Retries multiple Overpass mirrors with backoff if response is incomplete.
+    """
+    q = f"[out:json][timeout:60];way(around:100,{lat},{lon})[highway];out tags 1;"
+
+    for attempt in range(retries):
+        url = random.choice(OVERPASS_URLS)
+        try:
+            r = requests.get(url, params={"data": q}, timeout=60)
+            if r.status_code != 200:
+                time.sleep(2 * (attempt + 1))
+                continue
+
+            data = r.json().get("elements", [])
+            if not data:
+                time.sleep(2 * (attempt + 1))
+                continue
+
+            tags = data[0].get("tags", {})
+            ref = safe_ref(tags.get("ref", "-"))
+            if tags:
+                return ref, tags
+
+        except Exception as e:
+            time.sleep(2 * (attempt + 1))  # exponential delay before retry
+
+    # fallback if everything fails
+    return "-", {}
+
+
+def get_carriageway_type(tags, ref):
+    if any(k in tags for k in ["lanes", "lanes:forward", "lanes:backward", "oneway", "divider", "dual_carriageway"]):
+        return "Divided"
+    if ref.startswith(("NH", "AH")):
+        return "Divided"
+    return "Undivided"
+
+
+def query_crossings(lat, lon, radius=50, retries=3):
+    q = f"""[out:json][timeout:60];
     (way(around:{radius},{lat},{lon})[bridge];
-     node(around:{radius},{lat},{lon})[highway=crossing];);out tags 50;"""
-    result = {"Bridge": False, "Crossing": False}
-    try:
-        r = requests.get("https://overpass-api.de/api/interpreter", params={"data": q}, timeout=30)
-        for el in r.json().get("elements", []):
-            t = el.get("tags", {})
-            if "bridge" in t: result["Bridge"] = True
-            if t.get("highway") == "crossing": result["Crossing"] = True
-    except:
-        pass
-    return "; ".join([k for k, v in result.items() if v]) or "-"
+     node(around:{radius},{lat},{lon})[highway=crossing];);
+    out tags 50;"""
+
+    for attempt in range(retries):
+        url = random.choice(OVERPASS_URLS)
+        try:
+            r = requests.get(url, params={"data": q}, timeout=60)
+            if r.status_code == 200:
+                data = r.json().get("elements", [])
+                result = {"Bridge": False, "Crossing": False}
+                for el in data:
+                    t = el.get("tags", {})
+                    if "bridge" in t: result["Bridge"] = True
+                    if t.get("highway") == "crossing": result["Crossing"] = True
+                if any(result.values()):
+                    return "; ".join([k for k, v in result.items() if v])
+        except:
+            time.sleep(2 * (attempt + 1))
+    return "-"
+
 
 # ================================================
 # SOIL DATA CONFIG
@@ -283,24 +362,27 @@ for i, p in enumerate(points_sorted):
     landuse = classify_landuse(lat, lon)
     landuse_category = landuse.get("Category", "Unknown")
     ref, tags = query_road(lat, lon)
-    int_ref = query_road(lat,lon)
-    lanes = estimate_lanes(tags, ref)
+    lanes = get_carriageway_type(tags, ref)
     crossings = query_crossings(lat, lon)
     soil_data = get_soil_properties(lat, lon)
 
-    remarks = "Feasible"
-    if terrain in ["Hilly","Steep"]: remarks = "Challenging terrain – review alignment"
-    elif landuse in ["Urban","Semi Urban"]: remarks = "Feasible, minor shift may be needed"
+    if terrain in ["Hilly", "Steep"]:
+        remarks = "Challenging terrain, review alignment"
+    elif landuse in ["Urban", "Semi Urban"]:
+        remarks = "Feasible, minor shift may be needed"
+    else:
+        remarks = "Feasible"
+
 
     img_url = f"https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/{lon},{lat},18,0/1080x720?access_token={MAPBOX_TOKEN}"
 
     rec = {
         "Chainage": name, "Latitude": lat, "Longitude": lon,
-        "New Number": ref, "Old Number": int_ref,"Lane (Total)": f"{lanes} Lane",
-        "Elevation (m)": elev, "Slope (deg)": slope, "Terrain Type": terrain,
+        "Road Number": ref, "Lane (Total)": f"{lanes} Lane",
+        "Elevation (m)": elev, "Gradient %": slope, "Terrain Type": terrain,
         "Land Use" : landuse_category,
         "Land Use Detail": landuse, "Crossings / Structures nearby": crossings,
-        "Remarks": remarks, "DEM Source": dem_src, "Google Earth Image (~400 m Eye)": img_url,
+        "Remarks": remarks, "DEM Source": dem_src, "Google Earth View (~400 m)": img_url,
         "OSM Tags": json.dumps(tags, ensure_ascii=False)
     }
     rec.update(soil_data)
@@ -308,20 +390,13 @@ for i, p in enumerate(points_sorted):
     progress.progress((i + 1) / len(points_sorted))
     time.sleep(0.02)
 
-st.success("✅ TAR + Soil Data extraction complete!")
+st.success("✅ TAR")
 
 # ================================================
 # DISPLAY & DOWNLOAD
 # ================================================
 df = pd.DataFrame(records)
 st.dataframe(df.head(10), use_container_width=True)
-
-st.subheader("🛰️ Google Earth-like Views (~500 m Eye Height)")
-for _, r in df.head(5).iterrows():
-    st.image(r["Google Earth-like View (~500 m)"],
-             caption=f"Chainage {r['Chainage']} | {r['Latitude']:.6f}, {r['Longitude']:.6f}",
-             use_container_width=True)
-
 buf = BytesIO()
 df.to_excel(buf, index=False, engine="openpyxl")
 st.download_button("📥 Download Full Excel (OFC Data)",
