@@ -86,10 +86,15 @@ import zipfile
 import io
 import xml.etree.ElementTree as ET
 
-uploaded = st.file_uploader("📤 Upload alignment file (.kml or .kmz)", type=["kml", "kmz"])
-if uploaded is None:
-    st.info("Please upload your KML or KMZ alignment file.")
+uploaded_files = st.file_uploader(
+    "📤 Upload multiple alignment files (.kml or .kmz)",
+    type=["kml", "kmz"],
+    accept_multiple_files=True
+)
+if not uploaded_files:
+    st.info("Please upload one or more KML/KMZ alignment files.")
     st.stop()
+
 
 try:
     # =========================
@@ -106,6 +111,16 @@ try:
     else:
         kml_content = uploaded.getvalue().decode("utf-8")
 
+from io import BytesIO
+import zipfile
+
+zip_buffer = BytesIO()
+excel_files = []
+progress = st.progress(0)
+
+for file_index, uploaded in enumerate(uploaded_files):
+    file_name = uploaded.name.replace(".kml", "").replace(".kmz", "")
+    st.write(f"📂 Processing file: {file_name}")
     # =========================
     # STEP 2: Parse KML features
     # =========================
@@ -416,17 +431,31 @@ for i, p in enumerate(points_sorted):
 
 st.success("✅ TAR")
 
-# ================================================
-# DISPLAY & DOWNLOAD
-# ================================================
-df = pd.DataFrame(records)
+    # --- Save this file’s output ---
+    buffer = BytesIO()
+    df.to_excel(buffer, index=False, engine="openpyxl")
+    excel_files.append((f"{file_name}.xlsx", buffer))
+
+    # --- Show progress ---
+    progress.progress((file_index + 1) / len(uploaded_files))
+
+# --- After loop: create ZIP of all Excel files ---
+with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zipf:
+    for filename, data in excel_files:
+        data.seek(0)
+        zipf.writestr(filename, data.read())
+
+# --- Show preview for first file only ---
+st.subheader(f"📄 Preview of {uploaded_files[0].name}")
 st.dataframe(df.head(10), use_container_width=True)
-buf = BytesIO()
-df.to_excel(buf, index=False, engine="openpyxl")
-st.download_button("📥 Download Full Excel (OFC Data)",
-                   buf.getvalue(),
-                   file_name="OFC Alignment.xlsx",
-                   mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+# --- Final ZIP download ---
+st.download_button(
+    label="📦 Download All Excel Files (ZIP)",
+    data=zip_buffer.getvalue(),
+    file_name="Cube_TAR_All_Outputs.zip",
+    mime="application/zip"
+)
 
 
 
