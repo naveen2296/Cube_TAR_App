@@ -40,14 +40,49 @@ with col2:
     st.markdown('<div class="title">Cube Highways Technologies Private Limited</div>', unsafe_allow_html=True)
     st.markdown('<div class="glitter">Technical Audit & Rating</div>', unsafe_allow_html=True)
 
-# --- Authentication ---
+# --- Custom CSS for Centered Login Page ---
+st.markdown(
+    """
+    <style>
+    .stApp {
+        background-color: #0e1117; /* dark Streamlit theme */
+    }
+    .login-container {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        height: 85vh;
+    }
+    .login-box {
+        background-color: #1e2228;
+        padding: 2rem 3rem;
+        border-radius: 15px;
+        box-shadow: 0px 0px 20px rgba(0,0,0,0.4);
+        text-align: center;
+        width: 350px;
+    }
+    input {
+        text-align: center !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+# --- Authentication Function ---
 def check_password():
-    """Returns `True` if the user had a correct password."""
+    """Centered login screen with secure authentication"""
     if "password_correct" not in st.session_state:
-        # First run, show input widgets
-        st.text_input("Username", key="username")
-        st.text_input("Password", type="password", key="password")
-        if st.button("Login"):
+        st.markdown('<div class="login-container"><div class="login-box">', unsafe_allow_html=True)
+        st.markdown("<h3 style='text-align:center; color:white;'>🔒 Cube TAR Login</h3>", unsafe_allow_html=True)
+
+        st.text_input("Username", key="username", placeholder="Enter username")
+        st.text_input("Password", type="password", key="password", placeholder="Enter password")
+
+        login_button = st.button("Login")
+
+        if login_button:
             if (
                 st.session_state.username == st.secrets["auth"]["user"]
                 and st.session_state.password == st.secrets["auth"]["password"]
@@ -56,12 +91,16 @@ def check_password():
                 st.rerun()
             else:
                 st.error("❌ Incorrect username or password")
+
+        st.markdown("</div></div>", unsafe_allow_html=True)
         return False
+
     elif st.session_state.password_correct:
         return True
+
     return False
 
-# Stop the app if incorrect
+# --- Stop app until login success ---
 if not check_password():
     st.stop()
 
@@ -428,5 +467,6 @@ st.download_button("📥 Download Full Excel (OFC Data)",
                    buf.getvalue(),
                    file_name="OFC Alignment.xlsx",
                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
 
 
