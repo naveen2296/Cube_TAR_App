@@ -409,16 +409,16 @@ def get_soil_properties(lat, lon):
     df = pd.DataFrame(records)
 
         # --- Show preview for first file only ---
-        if file_index == 1:
+    if file_index == 1:
             st.subheader(f"📊 Preview of {file_name}")
             st.dataframe(df.head(10), use_container_width=True)
 
         # --- Save each Excel in memory ---
-        buf = BytesIO()
-        df.to_excel(buf, index=False, engine="openpyxl")
-        excel_files.append((f"{file_name}.xlsx", buf))
+    buf = BytesIO()
+    df.to_excel(buf, index=False, engine="openpyxl")
+    excel_files.append((f"{file_name}.xlsx", buf))
 
-        st.success(f"✅ Completed: {file_name}")
+    st.success(f"✅ Completed: {file_name}")
 
     except Exception as e:
         st.error(f"❌ Error processing {file_name}: {e}")
