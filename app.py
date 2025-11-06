@@ -87,73 +87,80 @@ import zipfile
 import io
 import xml.etree.ElementTree as ET
 
-uploaded_files= st.file_uploader("📤 Upload alignment file (.kml or .kmz)", type=["kml", "kmz"], accept_multiple_files=True)
-if uploaded_files is None:
-    st.info("Please upload your KML or KMZ alignment file.")
+uploaded_files = st.file_uploader(
+    "📤 Upload alignment files (.kml or .kmz)",
+    type=["kml", "kmz"],
+    accept_multiple_files=True
+)
+
+if not uploaded_files:
+    st.info("Please upload one or more KML or KMZ alignment files.")
     st.stop()
 
-try:
-    # =========================
-    # STEP 1: Read KML contents
-    # =========================
-    if uploaded_files.name.lower().endswith(".kmz"):
-        with zipfile.ZipFile(io.BytesIO(uploaded_files.read()), 'r') as z:
-            # find first .kml file inside KMZ
-            kml_files = [f for f in z.namelist() if f.endswith(".kml")]
-            if not kml_files:
-                st.error("No .kml file found inside KMZ.")
-                st.stop()
-            kml_content = z.read(kml_files[0]).decode("utf-8")
-    else:
-        kml_content = uploaded_files.getvalue().decode("utf-8")
+# Loop through each uploaded file
+for uploaded in uploaded_files:
+    st.markdown(f"### 📄 Processing file: `{uploaded.name}`")
 
-    # =========================
-    # STEP 2: Parse KML features
-    # =========================
-    root = ET.fromstring(kml_content)
-    ns = {"kml": "http://www.opengis.net/kml/2.2"}
-    points = []
+    try:
+        # =========================
+        # STEP 1: Read KML contents
+        # =========================
+        if uploaded.name.lower().endswith(".kmz"):
+            with zipfile.ZipFile(io.BytesIO(uploaded.read()), 'r') as z:
+                kml_files = [f for f in z.namelist() if f.endswith(".kml")]
+                if not kml_files:
+                    st.error(f"No .kml file found inside {uploaded.name}.")
+                    continue
+                kml_content = z.read(kml_files[0]).decode("utf-8")
+        else:
+            kml_content = uploaded.getvalue().decode("utf-8")
 
-    for pm in root.findall(".//kml:Placemark", ns):
-        name_elem = pm.find("kml:name", ns)
-        coord_elem = pm.find(".//kml:coordinates", ns)
+        # =========================
+        # STEP 2: Parse KML features
+        # =========================
+        root = ET.fromstring(kml_content)
+        ns = {"kml": "http://www.opengis.net/kml/2.2"}
+        points = []
 
-        # Skip if coordinates missing
-        if coord_elem is None or not coord_elem.text.strip():
-            continue
+        for pm in root.findall(".//kml:Placemark", ns):
+            name_elem = pm.find("kml:name", ns)
+            coord_elem = pm.find(".//kml:coordinates", ns)
 
-        coords = coord_elem.text.strip().split()
-        geom_type = "LineString" if len(coords) > 1 else "Point"
+            # Skip if coordinates missing
+            if coord_elem is None or not coord_elem.text.strip():
+                continue
 
-        # Only extract Point coordinates
-        if geom_type == "Point":
-            lon, lat, *_ = [float(x) for x in coords[0].split(",")]
-            name = name_elem.text.strip() if name_elem is not None else ""
+            coords = coord_elem.text.strip().split()
+            geom_type = "LineString" if len(coords) > 1 else "Point"
 
-            # Convert "0+100" to numeric for sorting
-            name_numeric = 0.0
-            try:
-                name_numeric = float(name.replace("+", "")) if "+" in name else float(name)
-            except:
-                pass
+            # Only extract Point coordinates
+            if geom_type == "Point":
+                lon, lat, *_ = [float(x) for x in coords[0].split(",")]
+                name = name_elem.text.strip() if name_elem is not None else ""
 
-            points.append({
-                "name": name,
-                "name_numeric": name_numeric,
-                "lat": lat,
-                "lon": lon
-            })
+                # Convert "0+100" to numeric for sorting
+                name_numeric = 0.0
+                try:
+                    name_numeric = float(name.replace("+", "")) if "+" in name else float(name)
+                except:
+                    pass
 
-    # =========================
-    # STEP 3: Sort and confirm
-    # =========================
-    points_sorted = sorted(points, key=lambda p: p["name_numeric"])
-    st.success(f"✅ Loaded {len(points_sorted)} chainage points from file.")
+                points.append({
+                    "name": name,
+                    "name_numeric": name_numeric,
+                    "lat": lat,
+                    "lon": lon
+                })
 
-except Exception as e:
-    st.error(f"KML/KMZ parsing failed: {e}")
-    st.stop()
+        # =========================
+        # STEP 3: Sort and confirm
+        # =========================
+        points_sorted = sorted(points, key=lambda p: p["name_numeric"])
+        st.success(f"✅ Loaded {len(points_sorted)} chainage points from file: `{uploaded.name}`")
 
+    except Exception as e:
+        st.error(f"❌ KML/KMZ parsing failed for {uploaded.name}: {e}")
+        continue
 # ================================================
 # FUNCTIONS
 # ================================================
@@ -823,6 +830,7 @@ st.download_button("📥 Download Full Excel (OFC Data)",
                    buf.getvalue(),
                    file_name="OFC Data.xlsx",
                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
 
 
 
