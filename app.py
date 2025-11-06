@@ -435,7 +435,7 @@ df.to_excel(buffer, index=False, engine="openpyxl")
 excel_files.append((f"{file_name}.xlsx", buffer))
 
     # --- Show progress ---
-    progress.progress((file_index + 1) / len(uploaded_files))
+progress.progress((file_index + 1) / len(uploaded_files))
 
 # --- After loop: create ZIP of all Excel files ---
 with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zipf:
@@ -454,6 +454,7 @@ st.download_button(
     file_name="OFC_All_Outputs.zip",
     mime="application/zip"
 )
+
 
 
 
