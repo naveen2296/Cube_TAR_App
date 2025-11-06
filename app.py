@@ -430,9 +430,9 @@ for i, p in enumerate(points_sorted):
 st.success("✅ TAR")
 
     # --- Save this file’s output ---
-    buffer = BytesIO()
-    df.to_excel(buffer, index=False, engine="openpyxl")
-    excel_files.append((f"{file_name}.xlsx", buffer))
+buffer = BytesIO()
+df.to_excel(buffer, index=False, engine="openpyxl")
+excel_files.append((f"{file_name}.xlsx", buffer))
 
     # --- Show progress ---
     progress.progress((file_index + 1) / len(uploaded_files))
@@ -451,9 +451,10 @@ st.dataframe(df.head(10), use_container_width=True)
 st.download_button(
     label="📦 Download All Excel Files (ZIP)",
     data=zip_buffer.getvalue(),
-    file_name="Cube_TAR_All_Outputs.zip",
+    file_name="OFC_All_Outputs.zip",
     mime="application/zip"
 )
+
 
 
 
