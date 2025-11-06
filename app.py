@@ -834,9 +834,6 @@ excel_files.append((f"{file_name}.xlsx", buf))
 # --- Progress update ---
 progress.progress((file_index + 1) / len(uploaded_files))
 st.success(f"✅ Completed: {file_name}")
-except Exception as e:
-   st.error(f"❌ Error processing {file_name}: {e}")
-   continue
 # ================================================
 # ZIP DOWNLOAD
 # ================================================
@@ -851,6 +848,7 @@ st.download_button(
     file_name="OFC_All_Outputs.zip",
     mime="application/zip"
 )
+
 
 
 
