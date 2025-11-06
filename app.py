@@ -97,7 +97,7 @@ if not uploaded_files:
     st.stop()
 
 # Loop through each uploaded file
-for file_index, uploaded in enumerate(uploaded_files, start=1):
+for file_index, uploaded in enumerate(uploaded_files, start=0):
     file_name = uploaded.name.replace(".kml", "").replace(".kmz", "")
     st.markdown(f"### 📄 ({file_index}) Processing file: `{file_name}`")
 
@@ -454,6 +454,7 @@ st.download_button(
     file_name="OFC_All_Outputs.zip",
     mime="application/zip"
 )
+
 
 
 
