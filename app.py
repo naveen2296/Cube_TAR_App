@@ -406,7 +406,7 @@ def get_soil_properties(lat, lon):
             records.append(rec)
             progress.progress(((file_index - 1) + (i + 1)/len(points_sorted)) / len(uploaded_files))
 
-        df = pd.DataFrame(records)
+    df = pd.DataFrame(records)
 
         # --- Show preview for first file only ---
         if file_index == 1:
