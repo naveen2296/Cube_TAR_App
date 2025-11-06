@@ -119,8 +119,8 @@ try:
     progress = st.progress(0)
 
     for file_index, uploaded in enumerate(uploaded_files):
-    file_name = uploaded.name.replace(".kml", "").replace(".kmz", "")
-    st.write(f"📂 Processing file: {file_name}")
+        file_name = uploaded.name.replace(".kml", "").replace(".kmz", "")
+        st.write(f"📂 Processing file: {file_name}")
     
     root = ET.fromstring(kml_content)
     ns = {"kml": "http://www.opengis.net/kml/2.2"}
@@ -454,6 +454,7 @@ st.download_button(
     file_name="Cube_TAR_All_Outputs.zip",
     mime="application/zip"
 )
+
 
 
 
