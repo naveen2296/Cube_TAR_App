@@ -420,10 +420,6 @@ def get_soil_properties(lat, lon):
 
     st.success(f"✅ Completed: {file_name}")
 
-    except Exception as e:
-        st.error(f"❌ Error processing {file_name}: {e}")
-        continue
-
 # ================================================
 # STEP 3: ZIP ALL EXCEL FILES
 # ================================================
