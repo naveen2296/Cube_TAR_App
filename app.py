@@ -111,20 +111,17 @@ try:
     else:
         kml_content = uploaded.getvalue().decode("utf-8")
 
-from io import BytesIO
-import zipfile
-
-zip_buffer = BytesIO()
-excel_files = []
-progress = st.progress(0)
+    # =========================
+    # STEP 2: Parse KML features
+    # =========================
+    zip_buffer = BytesIO()
+    excel_files = []
+    progress = st.progress(0)
 
 for file_index, uploaded in enumerate(uploaded_files):
     file_name = uploaded.name.replace(".kml", "").replace(".kmz", "")
     st.write(f"📂 Processing file: {file_name}")
-
-    # =========================
-    # STEP 2: Parse KML features
-    # =========================
+    
     root = ET.fromstring(kml_content)
     ns = {"kml": "http://www.opengis.net/kml/2.2"}
     points = []
@@ -457,6 +454,7 @@ st.download_button(
     file_name="Cube_TAR_All_Outputs.zip",
     mime="application/zip"
 )
+
 
 
 
