@@ -386,62 +386,74 @@ def get_soil_properties(lat, lon):
 
 zip_buffer = BytesIO()
 excel_files = []
-records = []
 progress = st.progress(0)
 
-for i, p in enumerate(points_sorted):
-    lat, lon, name = p["lat"], p["lon"], p["name"]
+for file_index, uploaded in enumerate(uploaded_files, start=1):
+    file_name = uploaded.name.replace(".kml", "").replace(".kmz", "")
+    st.markdown(f"### 📄 Processing file: `{file_name}`")
 
-    elev, slope, dem_src = get_elevation_slope(lat, lon)
-    terrain = classify_terrain(slope)
-    landuse = classify_landuse(lat, lon)
-    landuse_category = landuse.get("Category", "Unknown")
-    ref, tags = query_road(lat, lon)
-    lanes = get_carriageway_type(tags, ref)
-    crossings = query_crossings(lat, lon)
-    soil_data = get_soil_properties(lat, lon)
+    try:
+        # -------------- your KML parsing block stays same --------------
+        # (root, ns, points_sorted creation etc.)
 
-    if terrain in ["Hilly", "Steep"]:
-        remarks = "Challenging terrain, review alignment"
-    elif landuse in ["Urban", "Semi Urban"]:
-        remarks = "Feasible, minor shift may be needed"
-    else:
-        remarks = "Feasible"
+        # ================================================
+        # MAIN PROCESSING PER FILE
+        # ================================================
+        records = []
+        for i, p in enumerate(points_sorted):
+            lat, lon, name = p["lat"], p["lon"], p["name"]
 
+            elev, slope, dem_src = get_elevation_slope(lat, lon)
+            terrain = classify_terrain(slope)
+            landuse = classify_landuse(lat, lon)
+            landuse_category = landuse.get("Category", "Unknown")
+            ref, tags = query_road(lat, lon)
+            lanes = get_carriageway_type(tags, ref)
+            crossings = query_crossings(lat, lon)
+            soil_data = get_soil_properties(lat, lon)
 
-    img_url = f"https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/{lon},{lat},18,0/1080x720?access_token={MAPBOX_TOKEN}"
+            if terrain in ["Hilly", "Steep"]:
+                remarks = "Challenging terrain, review alignment"
+            elif landuse in ["Urban", "Semi Urban"]:
+                remarks = "Feasible, minor shift may be needed"
+            else:
+                remarks = "Feasible"
 
-    rec = {
-        "Chainage": name, "Latitude": lat, "Longitude": lon,
-        "Road Number": ref, "Lane (Total)": f"{lanes} Lane",
-        "Elevation (m)": elev, "Gradient %": slope, "Terrain Type": terrain,
-        "Land Use" : landuse_category,
-        "Land Use Detail": landuse, "Crossings / Structures nearby": crossings,
-        "Remarks": remarks, "DEM Source": dem_src, "Google Earth View (~400 m)": img_url,
-        "OSM Tags": json.dumps(tags, ensure_ascii=False)
-    }
-    rec.update(soil_data)
-    records.append(rec)
-    progress.progress((i + 1) / len(points_sorted))
-    time.sleep(0.02)
+            img_url = f"https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/{lon},{lat},18,0/1080x720?access_token={MAPBOX_TOKEN}"
 
-st.success("✅ TAR")
+            rec = {
+                "Chainage": name, "Latitude": lat, "Longitude": lon,
+                "Road Number": ref, "Lane (Total)": f"{lanes} Lane",
+                "Elevation (m)": elev, "Gradient %": slope, "Terrain Type": terrain,
+                "Land Use": landuse_category, "Land Use Detail": landuse,
+                "Crossings / Structures nearby": crossings, "Remarks": remarks,
+                "DEM Source": dem_src, "Google Earth View (~400 m)": img_url,
+                "OSM Tags": json.dumps(tags, ensure_ascii=False)
+            }
+            rec.update(soil_data)
+            records.append(rec)
+            progress.progress(((file_index - 1) + (i + 1)/len(points_sorted)) / len(uploaded_files))
+
+        df = pd.DataFrame(records)
+
+        # --- Show preview for first file only ---
+        if file_index == 1:
+            st.subheader(f"📊 Preview of {file_name}")
+            st.dataframe(df.head(10), use_container_width=True)
+
+        # --- Save to Excel memory buffer ---
+        buf = BytesIO()
+        df.to_excel(buf, index=False, engine="openpyxl")
+        excel_files.append((f"{file_name}.xlsx", buf))
+
+        st.success(f"✅ Completed: {file_name}")
+
+    except Exception as e:
+        st.error(f"❌ Error processing {file_name}: {e}")
+        continue
 
 # ================================================
-# DISPLAY & DOWNLOAD
-# ================================================
-df = pd.DataFrame(records)
-# --- Preview only first file ---
-if file_index == 0:
-    st.subheader(f"📄 Preview of {file_name}")
-    st.dataframe(df.head(10), use_container_width=True)
-# --- Save this Excel ---
-buf = BytesIO()
-df.to_excel(buf, index=False, engine="openpyxl")
-excel_files.append((f"{file_name}.xlsx", buf))
-progress.progress((file_index + 1) / len(uploaded_files))
-# ================================================
-# ZIP DOWNLOAD
+# ZIP AFTER ALL FILES DONE
 # ================================================
 with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zipf:
     for filename, data in excel_files:
@@ -454,7 +466,6 @@ st.download_button(
     file_name="OFC_All_Outputs.zip",
     mime="application/zip"
 )
-
 
 
 
