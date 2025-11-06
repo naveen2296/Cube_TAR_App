@@ -439,11 +439,7 @@ if file_index == 0:
 buf = BytesIO()
 df.to_excel(buf, index=False, engine="openpyxl")
 excel_files.append((f"{file_name}.xlsx", buf))
-# --- Progress update ---
-progress = st.progress(0)
-for i, file in enumerate(uploaded_files):
-    # process...
-    progress.progress((i + 1) / len(uploaded_files))
+progress.progress((file_index + 1) / len(uploaded_files))
 # ================================================
 # ZIP DOWNLOAD
 # ================================================
@@ -458,5 +454,6 @@ st.download_button(
     file_name="OFC_All_Outputs.zip",
     mime="application/zip"
 )
+
 
 
