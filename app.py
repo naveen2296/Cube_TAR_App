@@ -31,7 +31,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-logo_path = r"D:\OneDrive - Cube Highways and Transportation Assets Advisors (P) Ltd\Desktop\KP\logo.png"
+logo_path = "logo.png"
 
 col1, col2, col3 = st.columns([1,4,1])
 with col1:
@@ -403,3 +403,4 @@ st.download_button("📥 Download Full Excel (OFC Data)",
                    buf.getvalue(),
                    file_name="OFC Alignment.xlsx",
                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
