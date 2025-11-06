@@ -87,36 +87,44 @@ import zipfile
 import io
 import xml.etree.ElementTree as ET
 
+# ================================================
+# UPLOAD KML FILE
+# ================================================
+import zipfile
+import io
+import xml.etree.ElementTree as ET
+
 uploaded_files = st.file_uploader(
-    "📤 Upload alignment files (.kml or .kmz)",
+    "📤 Upload one or more alignment files (.kml or .kmz)",
     type=["kml", "kmz"],
     accept_multiple_files=True
 )
 if not uploaded_files:
-    st.info("Please upload one or more KML or KMZ alignment files.")
+    st.info("Please upload your KML or KMZ alignment files.")
     st.stop()
 
-# Loop through each uploaded file
+zip_buffer = BytesIO()
+excel_files = []
+progress = st.progress(0)
+
+# --- Loop through each uploaded file ---
 for file_index, uploaded in enumerate(uploaded_files, start=1):
     file_name = uploaded.name.replace(".kml", "").replace(".kmz", "")
-    
+    st.markdown(f"### 📄 Processing file: `{file_name}`")
+
     try:
-        # =========================
-        # STEP 1: Read KML contents
-        # =========================
+        # --- Read KML or KMZ content ---
         if uploaded.name.lower().endswith(".kmz"):
             with zipfile.ZipFile(io.BytesIO(uploaded.read()), 'r') as z:
                 kml_files = [f for f in z.namelist() if f.endswith(".kml")]
                 if not kml_files:
-                    st.error(f"No .kml file found inside {uploaded.name}.")
+                    st.error(f"No .kml file found inside {uploaded.name}")
                     continue
                 kml_content = z.read(kml_files[0]).decode("utf-8")
         else:
             kml_content = uploaded.getvalue().decode("utf-8")
 
-        # =========================
-        # STEP 2: Parse KML features
-        # =========================
+        # --- Parse coordinates from KML ---
         root = ET.fromstring(kml_content)
         ns = {"kml": "http://www.opengis.net/kml/2.2"}
         points = []
@@ -124,38 +132,23 @@ for file_index, uploaded in enumerate(uploaded_files, start=1):
         for pm in root.findall(".//kml:Placemark", ns):
             name_elem = pm.find("kml:name", ns)
             coord_elem = pm.find(".//kml:coordinates", ns)
-
-            # Skip if coordinates missing
             if coord_elem is None or not coord_elem.text.strip():
                 continue
-
             coords = coord_elem.text.strip().split()
-            geom_type = "LineString" if len(coords) > 1 else "Point"
-
-            # Only extract Point coordinates
-            if geom_type == "Point":
+            if len(coords) == 1:  # single point
                 lon, lat, *_ = [float(x) for x in coords[0].split(",")]
                 name = name_elem.text.strip() if name_elem is not None else ""
-
-                # Convert "0+100" to numeric for sorting
-                name_numeric = 0.0
                 try:
                     name_numeric = float(name.replace("+", "")) if "+" in name else float(name)
                 except:
-                    pass
+                    name_numeric = 0.0
+                points.append({"name": name, "lat": lat, "lon": lon, "name_numeric": name_numeric})
 
-                points.append({
-                    "name": name,
-                    "name_numeric": name_numeric,
-                    "lat": lat,
-                    "lon": lon
-                })
+        # --- Sort and confirm ---
+        points_sorted = sorted(points, key=lambda x: x["name_numeric"])
+        st.success(f"✅ Loaded {len(points_sorted)} chainage points from `{file_name}`")
 
-        # =========================
-        # STEP 3: Sort and confirm
-        # =========================
-        points_sorted = sorted(points, key=lambda p: p["name_numeric"])
-        st.success(f"✅ Loaded {len(points_sorted)} chainage points from file: `{uploaded.name}`")
+        # --- Then process the points as usual (keep your existing logic below this) ---
 
     except Exception as e:
         st.error(f"❌ KML/KMZ parsing failed for {uploaded.name}: {e}")
@@ -379,69 +372,13 @@ def get_soil_properties(lat, lon):
                     result[f"{name}_{band} ({info['unit']})"] = None
     return result
 
-# ================================================
-# MAIN PROCESSING
-# ================================================
-zip_buffer = BytesIO()
-excel_files = []
-progress = st.progress(0)
 
-for file_index, uploaded in enumerate(uploaded_files, start=1):
-    file_name = uploaded.name.replace(".kml", "").replace(".kmz", "")
-    st.markdown(f"### 📄 Processing file: `{file_name}`")
-
-    try:
-        # =========================
-        # STEP 1: Parse each KML/KMZ separately
-        # =========================
-        if uploaded.name.lower().endswith(".kmz"):
-            with zipfile.ZipFile(io.BytesIO(uploaded.read()), 'r') as z:
-                kml_files = [f for f in z.namelist() if f.endswith(".kml")]
-                if not kml_files:
-                    st.error(f"No .kml file found inside {uploaded.name}.")
-                    continue
-                kml_content = z.read(kml_files[0]).decode("utf-8")
-        else:
-            kml_content = uploaded.getvalue().decode("utf-8")
-
-        root = ET.fromstring(kml_content)
-        ns = {"kml": "http://www.opengis.net/kml/2.2"}
-        points = []
-
-        for pm in root.findall(".//kml:Placemark", ns):
-            name_elem = pm.find("kml:name", ns)
-            coord_elem = pm.find(".//kml:coordinates", ns)
-
-            if coord_elem is None or not coord_elem.text.strip():
-                continue
-
-            coords = coord_elem.text.strip().split()
-            if len(coords) == 1:  # only point
-                lon, lat, *_ = [float(x) for x in coords[0].split(",")]
-                name = name_elem.text.strip() if name_elem is not None else ""
-
-                try:
-                    name_numeric = float(name.replace("+", "")) if "+" in name else float(name)
-                except:
-                    name_numeric = 0.0
-
-                points.append({
-                    "name": name,
-                    "name_numeric": name_numeric,
-                    "lat": lat,
-                    "lon": lon
-                })
-
-        # Sort within the same file
-        points_sorted = sorted(points, key=lambda p: p["name_numeric"])
-
-        st.success(f"✅ Parsed {len(points_sorted)} chainage points from `{file_name}`")
 
         # ================================================
         # STEP 2: PROCESS EACH FILE'S DATA
         # ================================================
-        records = []
-        for i, p in enumerate(points_sorted):
+    records = []
+    for i, p in enumerate(points_sorted):
             lat, lon, name = p["lat"], p["lon"], p["name"]
 
             elev, slope, dem_src = get_elevation_slope(lat, lon)
