@@ -382,7 +382,6 @@ def get_soil_properties(lat, lon):
 # ================================================
 # MAIN PROCESSING
 # ================================================
-
 zip_buffer = BytesIO()
 excel_files = []
 progress = st.progress(0)
@@ -392,11 +391,54 @@ for file_index, uploaded in enumerate(uploaded_files, start=1):
     st.markdown(f"### 📄 Processing file: `{file_name}`")
 
     try:
-        # -------------- your KML parsing block stays same --------------
-        # (root, ns, points_sorted creation etc.)
+        # =========================
+        # STEP 1: Parse each KML/KMZ separately
+        # =========================
+        if uploaded.name.lower().endswith(".kmz"):
+            with zipfile.ZipFile(io.BytesIO(uploaded.read()), 'r') as z:
+                kml_files = [f for f in z.namelist() if f.endswith(".kml")]
+                if not kml_files:
+                    st.error(f"No .kml file found inside {uploaded.name}.")
+                    continue
+                kml_content = z.read(kml_files[0]).decode("utf-8")
+        else:
+            kml_content = uploaded.getvalue().decode("utf-8")
+
+        root = ET.fromstring(kml_content)
+        ns = {"kml": "http://www.opengis.net/kml/2.2"}
+        points = []
+
+        for pm in root.findall(".//kml:Placemark", ns):
+            name_elem = pm.find("kml:name", ns)
+            coord_elem = pm.find(".//kml:coordinates", ns)
+
+            if coord_elem is None or not coord_elem.text.strip():
+                continue
+
+            coords = coord_elem.text.strip().split()
+            if len(coords) == 1:  # only point
+                lon, lat, *_ = [float(x) for x in coords[0].split(",")]
+                name = name_elem.text.strip() if name_elem is not None else ""
+
+                try:
+                    name_numeric = float(name.replace("+", "")) if "+" in name else float(name)
+                except:
+                    name_numeric = 0.0
+
+                points.append({
+                    "name": name,
+                    "name_numeric": name_numeric,
+                    "lat": lat,
+                    "lon": lon
+                })
+
+        # Sort within the same file
+        points_sorted = sorted(points, key=lambda p: p["name_numeric"])
+
+        st.success(f"✅ Parsed {len(points_sorted)} chainage points from `{file_name}`")
 
         # ================================================
-        # MAIN PROCESSING PER FILE
+        # STEP 2: PROCESS EACH FILE'S DATA
         # ================================================
         records = []
         for i, p in enumerate(points_sorted):
@@ -413,7 +455,7 @@ for file_index, uploaded in enumerate(uploaded_files, start=1):
 
             if terrain in ["Hilly", "Steep"]:
                 remarks = "Challenging terrain, review alignment"
-            elif landuse in ["Urban", "Semi Urban"]:
+            elif landuse_category in ["Urban", "Semi Urban"]:
                 remarks = "Feasible, minor shift may be needed"
             else:
                 remarks = "Feasible"
@@ -424,9 +466,10 @@ for file_index, uploaded in enumerate(uploaded_files, start=1):
                 "Chainage": name, "Latitude": lat, "Longitude": lon,
                 "Road Number": ref, "Lane (Total)": f"{lanes} Lane",
                 "Elevation (m)": elev, "Gradient %": slope, "Terrain Type": terrain,
-                "Land Use": landuse_category, "Land Use Detail": landuse,
-                "Crossings / Structures nearby": crossings, "Remarks": remarks,
-                "DEM Source": dem_src, "Google Earth View (~400 m)": img_url,
+                "Land Use": landuse_category,
+                "Crossings / Structures nearby": crossings,
+                "Remarks": remarks, "DEM Source": dem_src,
+                "Google Earth View (~400 m)": img_url,
                 "OSM Tags": json.dumps(tags, ensure_ascii=False)
             }
             rec.update(soil_data)
@@ -440,7 +483,7 @@ for file_index, uploaded in enumerate(uploaded_files, start=1):
             st.subheader(f"📊 Preview of {file_name}")
             st.dataframe(df.head(10), use_container_width=True)
 
-        # --- Save to Excel memory buffer ---
+        # --- Save each Excel in memory ---
         buf = BytesIO()
         df.to_excel(buf, index=False, engine="openpyxl")
         excel_files.append((f"{file_name}.xlsx", buf))
@@ -452,7 +495,7 @@ for file_index, uploaded in enumerate(uploaded_files, start=1):
         continue
 
 # ================================================
-# ZIP AFTER ALL FILES DONE
+# STEP 3: ZIP ALL EXCEL FILES
 # ================================================
 with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zipf:
     for filename, data in excel_files:
