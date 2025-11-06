@@ -399,22 +399,22 @@ for i, p in enumerate(points_sorted):
 st.success("✅ TAR")
 
    # ---- PREVIEW ONLY FIRST FILE ----
-        if file_index == 0:
-            st.subheader(f"📄 Preview of {file_name}")
-            st.dataframe(df.head(10), use_container_width=True)
+if file_index == 0:
+    st.subheader(f"📄 Preview of {file_name}")
+    st.dataframe(df.head(10), use_container_width=True)
 
         # ---- SAVE TO EXCEL ----
-        buffer = BytesIO()
-        df.to_excel(buffer, index=False, engine="openpyxl")
-        excel_files.append((f"{file_name}.xlsx", buffer))
+buffer = BytesIO()
+df.to_excel(buffer, index=False, engine="openpyxl")
+excel_files.append((f"{file_name}.xlsx", buffer))
 
         # ---- PROGRESS UPDATE ----
-        progress.progress((file_index + 1) / len(uploaded_files))
-        st.success(f"✅ Completed: {file_name}")
+progress.progress((file_index + 1) / len(uploaded_files))
+st.success(f"✅ Completed: {file_name}")
 
-    except Exception as e:
-        st.error(f"❌ Error in {file_name}: {e}")
-        continue
+except Exception as e:
+    st.error(f"❌ Error in {file_name}: {e}")
+    continue
 
 # ================================================
 # ZIP DOWNLOAD
@@ -430,6 +430,7 @@ st.download_button(
     file_name="Cube_TAR_All_Files.zip",
     mime="application/zip"
 )
+
 
 
 
