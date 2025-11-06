@@ -825,8 +825,8 @@ st.success("✅ TAR")
 df = pd.DataFrame(records)
 # --- Preview only first file ---
 if file_index == 0:
-st.subheader(f"📄 Preview of {file_name}")
-st.dataframe(df.head(10), use_container_width=True)
+    st.subheader(f"📄 Preview of {file_name}")
+    st.dataframe(df.head(10), use_container_width=True)
 # --- Save this Excel ---
 buf = BytesIO()
 df.to_excel(buf, index=False, engine="openpyxl")
@@ -851,6 +851,7 @@ st.download_button(
     file_name="OFC_All_Outputs.zip",
     mime="application/zip"
 )
+
 
 
 
