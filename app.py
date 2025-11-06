@@ -87,13 +87,6 @@ import zipfile
 import io
 import xml.etree.ElementTree as ET
 
-# ================================================
-# UPLOAD KML FILE
-# ================================================
-import zipfile
-import io
-import xml.etree.ElementTree as ET
-
 uploaded_files = st.file_uploader(
     "📤 Upload one or more alignment files (.kml or .kmz)",
     type=["kml", "kmz"],
