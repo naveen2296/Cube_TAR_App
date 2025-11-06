@@ -40,6 +40,31 @@ with col2:
     st.markdown('<div class="title">Cube Highways Technologies Private Limited</div>', unsafe_allow_html=True)
     st.markdown('<div class="glitter">Technical Audit & Rating</div>', unsafe_allow_html=True)
 
+# --- Authentication ---
+def check_password():
+    """Returns `True` if the user had a correct password."""
+    if "password_correct" not in st.session_state:
+        # First run, show input widgets
+        st.text_input("Username", key="username")
+        st.text_input("Password", type="password", key="password")
+        if st.button("Login"):
+            if (
+                st.session_state.username == st.secrets["auth"]["user"]
+                and st.session_state.password == st.secrets["auth"]["password"]
+            ):
+                st.session_state.password_correct = True
+                st.rerun()
+            else:
+                st.error("❌ Incorrect username or password")
+        return False
+    elif st.session_state.password_correct:
+        return True
+    return False
+
+# Stop the app if incorrect
+if not check_password():
+    st.stop()
+
 # ================================================
 # AUTHENTICATE EARTH ENGINE
 # ================================================
@@ -403,4 +428,5 @@ st.download_button("📥 Download Full Excel (OFC Data)",
                    buf.getvalue(),
                    file_name="OFC Alignment.xlsx",
                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
 
