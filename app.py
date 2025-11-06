@@ -96,8 +96,8 @@ try:
     # =========================
     # STEP 1: Read KML contents
     # =========================
-    if uploaded.name.lower().endswith(".kmz"):
-        with zipfile.ZipFile(io.BytesIO(uploaded.read()), 'r') as z:
+    if uploaded_files.name.lower().endswith(".kmz"):
+        with zipfile.ZipFile(io.BytesIO(uploaded_files.read()), 'r') as z:
             # find first .kml file inside KMZ
             kml_files = [f for f in z.namelist() if f.endswith(".kml")]
             if not kml_files:
@@ -105,7 +105,7 @@ try:
                 st.stop()
             kml_content = z.read(kml_files[0]).decode("utf-8")
     else:
-        kml_content = uploaded.getvalue().decode("utf-8")
+        kml_content = uploaded_files.getvalue().decode("utf-8")
 
     # =========================
     # STEP 2: Parse KML features
@@ -823,6 +823,7 @@ st.download_button("📥 Download Full Excel (OFC Data)",
                    buf.getvalue(),
                    file_name="OFC Data.xlsx",
                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
 
 
 
